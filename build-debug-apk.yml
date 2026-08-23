@@ -1,0 +1,58 @@
+name: Build Debug APK
+
+# Builds the existing Gradle project (no source changes) and publishes
+# app-debug.apk as a downloadable workflow artifact.
+#
+# Triggers: manual dispatch, and on pushes/PRs so a build is always
+# available after changes. Adjust the `push`/`pull_request` branch
+# filters if your default branch isn't `main`.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # AGP 8.5.0 / Kotlin 1.9.24 (app/build.gradle.kts) both target JDK 17,
+      # matching compileOptions/kotlinOptions already set in the project.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The project has no Gradle wrapper checked in, so we provision a
+      # matching Gradle distribution directly. Gradle 8.7 is the minimum
+      # required by AGP 8.5.0 and is compatible with this project's config.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      # GitHub-hosted ubuntu-latest runners ship with the Android SDK
+      # cmdline-tools preinstalled (ANDROID_HOME set, sdkmanager on PATH).
+      # We just make sure the compileSdk 34 platform and matching
+      # build-tools are present.
+      - name: Install Android SDK platform & build-tools
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
